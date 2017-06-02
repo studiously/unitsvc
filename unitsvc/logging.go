@@ -11,8 +11,6 @@ import (
 	"github.com/studiously/unitsvc/models"
 )
 
-type Middleware func(Service) Service
-
 func LoggingMiddleware(logger log.Logger) Middleware {
 	return func(next Service) Service {
 		return &loggingMiddleware{

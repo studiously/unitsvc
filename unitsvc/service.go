@@ -6,6 +6,8 @@ import (
 	"github.com/studiously/unitsvc/models"
 )
 
+type Middleware func(Service) Service
+
 type Service interface {
 	ListUnits(ctx context.Context, classID uuid.UUID) ([]uuid.UUID, error)
 	GetUnit(ctx context.Context, unitID uuid.UUID) (*models.Unit, error)
