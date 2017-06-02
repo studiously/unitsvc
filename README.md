@@ -19,7 +19,7 @@ Then, to see what configuration options are necessary, run:
 unitsvc host --help
 ```
 
-There is also a docker image available 
+There is also a minimal image available at [https://hub.docker.com/r/studiously/unitsvc/](https://hub.docker.com/r/studiously/unitsvc/).
 
 ## Requirements
 
