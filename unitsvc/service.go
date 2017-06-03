@@ -2,8 +2,14 @@ package unitsvc
 
 import (
 	"context"
+	"errors"
+
 	"github.com/google/uuid"
 	"github.com/studiously/unitsvc/models"
+)
+
+var (
+	ErrNotFound = errors.New("the requested resource could not be found, or the user is not allowed to view it")
 )
 
 type Middleware func(Service) Service

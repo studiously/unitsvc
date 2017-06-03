@@ -16,10 +16,11 @@ import (
 	"github.com/studiously/introspector"
 	"github.com/studiously/svcerror"
 	"github.com/studiously/unitsvc/codes"
+	"errors"
 )
 
 var (
-	ErrBadRequest = svcerror.New(codes.BadRequest, "request is malformed or invalid")
+	ErrBadRequest = errors.New( "request is malformed or invalid")
 )
 
 func MakeHTTPHandler(s Service, logger log.Logger, ti oauth2.Introspector) http.Handler {
@@ -185,7 +186,8 @@ type errorer interface {
 	error() error
 }
 
-// encodeResponse is the common method to Encode all response types to the
+
+// encodeResponse is the common method to encode all response types to the
 // client. I chose to do it this way because, since we're using JSON, there's no
 // reason to provide anything more specific. It's certainly possible to
 // specialize on a per-response (per-method) basis.
@@ -200,9 +202,9 @@ func encodeResponse(ctx context.Context, w http.ResponseWriter, response interfa
 	return json.NewEncoder(w).Encode(response)
 }
 
-// encodeRequest likewise JSON-Encodes the request to the HTTP request body.
+// encodeRequest likewise JSON-encodes the request to the HTTP request body.
 // Don't use it directly as a transport/http.Client EncodeRequestFunc:
-// classsvc endpoints require mutating the HTTP method and request path.
+// profilesvc endpoints require mutating the HTTP method and request path.
 func encodeRequest(_ context.Context, req *http.Request, request interface{}) error {
 	var buf bytes.Buffer
 	err := json.NewEncoder(&buf).Encode(request)
@@ -217,19 +219,19 @@ func encodeError(_ context.Context, err error, w http.ResponseWriter) {
 	if err == nil {
 		panic("encodeError with nil error")
 	}
-	if err, ok := err.(svcerror.Error); !ok {
-		err = svcerror.Wrap(codes.Nil, err)
-	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(httpStatusFrom(err.(svcerror.Error).Status()))
+	w.WriteHeader(codeFrom(err))
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"error_code": err.(svcerror.Error).Status(),
-		"error":      err.Error(),
+		"error": err.Error(),
 	})
 }
 
-func httpStatusFrom(code int) int {
-	switch code {
+func codeFrom(err error) int {
+	switch err {
+	case ErrNotFound:
+		return http.StatusNotFound
+	case ErrBadRequest:
+			return http.StatusBadRequest
 	default:
 		return http.StatusInternalServerError
 	}

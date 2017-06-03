@@ -36,6 +36,7 @@ type Endpoints struct {
 	SetRoleEndpoint     endpoint.Endpoint
 	LeaveClassEndpoint  endpoint.Endpoint
 	ListMembersEndpoint endpoint.Endpoint
+	GetMemberEndpoint   endpoint.Endpoint
 }
 
 func MakeServerEndpoints(s Service) Endpoints {
@@ -49,6 +50,7 @@ func MakeServerEndpoints(s Service) Endpoints {
 		SetRoleEndpoint:     MakeSetRoleEndpoint(s),
 		LeaveClassEndpoint:  MakeLeaveClassEndpoint(s),
 		ListMembersEndpoint: MakeListMembersEndpoint(s),
+		GetMemberEndpoint:   MakeGetMemberEndpoint(s),
 	}
 }
 
@@ -79,6 +81,7 @@ func MakeClientEndpoints(instance string) (Endpoints, error) {
 		SetRoleEndpoint:     httptransport.NewClient("PATCH", tgt, EncodeSetRoleRequest, DecodeSetRoleResponse, options...).Endpoint(),
 		LeaveClassEndpoint:  httptransport.NewClient("DELETE", tgt, EncodeLeaveClassRequest, DecodeLeaveClassResponse, options...).Endpoint(),
 		ListMembersEndpoint: httptransport.NewClient("GET", tgt, EncodeListMembersRequest, DecodeListMembersResponse, options...).Endpoint(),
+		GetMemberEndpoint:   httptransport.NewClient("GET", tgt, EncodeGetMemberRequest, DecodeGetMemberResponse, options...).Endpoint(),
 	}, nil
 }
 
@@ -101,17 +104,17 @@ func (e Endpoints) GetClass(ctx context.Context, classID uuid.UUID) (*models.Cla
 	return resp.Class, resp.Error
 }
 
-func (e Endpoints) CreateClass(ctx context.Context, name string) (uuid.UUID, error) {
+func (e Endpoints) CreateClass(ctx context.Context, name string) (*uuid.UUID, error) {
 	request := createClassRequest{Name: name}
 	response, err := e.CreateClassEndpoint(ctx, request)
 	if err != nil {
-		return uuid.Nil, err
+		return nil, err
 	}
 	resp := response.(createClassResponse)
-	return resp.Id, resp.Error
+	return resp.ClassID, resp.Error
 }
 
-func (e Endpoints) UpdateClass(ctx context.Context, classID uuid.UUID, name string, currentUnit uuid.UUID) error {
+func (e Endpoints) UpdateClass(ctx context.Context, classID uuid.UUID, name *string, currentUnit *uuid.UUID) error {
 	request := updateClassRequest{ClassID: classID, Name: name, CurrentUnit: currentUnit}
 	response, err := e.UpdateClassEndpoint(ctx, request)
 	if err != nil {
@@ -141,7 +144,7 @@ func (e Endpoints) JoinClass(ctx context.Context, classID uuid.UUID) error {
 	return resp.Error
 }
 
-func (e Endpoints) SetRole(ctx context.Context, userID uuid.UUID, classID uuid.UUID, role models.UserRole) error {
+func (e Endpoints) SetRole(ctx context.Context, classID, userID uuid.UUID, role models.UserRole) error {
 	request := setRoleRequest{UserID: userID, ClassID: classID, Role: role}
 	response, err := e.SetRoleEndpoint(ctx, request)
 	if err != nil {
@@ -151,7 +154,7 @@ func (e Endpoints) SetRole(ctx context.Context, userID uuid.UUID, classID uuid.U
 	return resp.Error
 }
 
-func (e Endpoints) LeaveClass(ctx context.Context, classID uuid.UUID, userID uuid.UUID) error {
+func (e Endpoints) LeaveClass(ctx context.Context, userID *uuid.UUID, classID uuid.UUID) error {
 	request := leaveClassRequest{ClassID: classID, UserID: userID}
 	response, err := e.LeaveClassEndpoint(ctx, request)
 	if err != nil {
@@ -171,10 +174,40 @@ func (e Endpoints) ListMembers(ctx context.Context, classID uuid.UUID) ([]*model
 	return resp.Members, resp.Error
 }
 
+//func (e Endpoints) GetRole(ctx context.Context, userID, classID uuid.UUID) (*models.UserRole, error) {
+//	request := getRoleRequest{UserID: userID, ClassID: classID}
+//	response, err := e.GetRoleEndpoint(ctx, request)
+//	if err != nil {
+//		return nil, err
+//	}
+//	resp := response.(getRoleResponse)
+//	return resp.Role, resp.Error
+//}
+//
+//func (e Endpoints) IsOwner(ctx context.Context, userID, classID uuid.UUID) (bool, error) {
+//	request := isOwnerRequest{UserID: userID, ClassID: classID}
+//	response, err := e.IsOwnerEndpoint(ctx, request)
+//	if err != nil {
+//		return nil, err
+//	}
+//	resp := response.(isOwnerResponse)
+//	return resp.IsOwner, resp.Error
+//}
+
+func (e Endpoints) GetMember(ctx context.Context, classID, userID uuid.UUID) (*models.Member, error) {
+	request := getMemberRequest{UserID: userID, ClassID: classID}
+	response, err := e.GetMemberEndpoint(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	resp := response.(getMemberResponse)
+	return resp.Member, resp.Error
+}
+
 func MakeListClassesEndpoint(s Service) endpoint.Endpoint {
 	return func(ctx context.Context, request interface{}) (response interface{}, err error) {
-		classes, err := s.ListClasses(ctx)
-		return listClassesResponse{classes, err}, nil
+		classes, e := s.ListClasses(ctx)
+		return listClassesResponse{classes, e}, nil
 	}
 }
 
@@ -196,11 +229,11 @@ func MakeGetClassEndpoint(s Service) endpoint.Endpoint {
 }
 
 type getClassRequest struct {
-	ClassID uuid.UUID `json:"id,omitempty"`
+	ClassID uuid.UUID `json:"class_id,omitempty"`
 }
 
 type getClassResponse struct {
-	*models.Class `json:"class,omitempty"`
+	Class *models.Class `json:"class,omitempty"`
 	Error error `json:"error,omitempty"`
 }
 
@@ -221,8 +254,8 @@ type createClassRequest struct {
 }
 
 type createClassResponse struct {
-	Id    uuid.UUID `json:"id"`
-	Error error `json:"error,omitempty"`
+	ClassID *uuid.UUID `json:"class_id,omitempty"`
+	Error   error `json:"error,omitempty"`
 }
 
 func (r createClassResponse) error() error {
@@ -239,8 +272,8 @@ func MakeUpdateClassEndpoint(s Service) endpoint.Endpoint {
 
 type updateClassRequest struct {
 	ClassID     uuid.UUID
-	Name        string `json:"class"`
-	CurrentUnit uuid.UUID `json:"current_unit"`
+	Name        *string `json:"class,omitempty"`
+	CurrentUnit *uuid.UUID `json:"current_unit,omitempty"`
 }
 
 type updateClassResponse struct {
@@ -260,7 +293,7 @@ func MakeDeleteClassEndpoint(s Service) endpoint.Endpoint {
 }
 
 type deleteClassRequest struct {
-	ClassID uuid.UUID `json:"id"`
+	ClassID uuid.UUID `json:"class_id"`
 }
 
 type deleteClassResponse struct {
@@ -300,7 +333,7 @@ func MakeLeaveClassEndpoint(s Service) endpoint.Endpoint {
 }
 
 type leaveClassRequest struct {
-	UserID  uuid.UUID `json:"user,omitempty"`
+	UserID  *uuid.UUID `json:"user,omitempty"`
 	ClassID uuid.UUID `json:"class"`
 }
 
@@ -354,3 +387,87 @@ type listMembersResponse struct {
 func (r listMembersResponse) error() error {
 	return r.Error
 }
+
+func MakeGetMemberEndpoint(s Service) endpoint.Endpoint {
+	return func(ctx context.Context, request interface{}) (response interface{}, err error) {
+		req := request.(getMemberRequest)
+		member, e := s.GetMember(ctx, req.ClassID, req.UserID)
+		return getMemberResponse{member, e}, nil
+	}
+}
+
+type getMemberRequest struct {
+	UserID  uuid.UUID
+	ClassID uuid.UUID
+}
+
+type getMemberResponse struct {
+	Member *models.Member `json:"member,omitempty"`
+	Error  error `json:"error,omitempty"`
+}
+
+//func MakeGetRoleEndpoint(s Service) endpoint.Endpoint {
+//	return func(ctx context.Context, request interface{}) (response interface{}, err error) {
+//		req := request.(getRoleRequest)
+//		role, e := s.GetRole(ctx, req.UserID, req.ClassID)
+//		return getRoleResponse{role, e}, nil
+//	}
+//}
+//
+//type getRoleRequest struct {
+//	UserID  uuid.UUID
+//	ClassID uuid.UUID
+//}
+//
+//type getRoleResponse struct {
+//	Role  *models.UserRole `json:"role,omitempty"`
+//	Error error `json:"error,omitempty"`
+//}
+//
+//func (r getRoleResponse) error() error {
+//	return r.Error
+//}
+//
+//func MakeIsOwnerEndpoint(s Service) endpoint.Endpoint {
+//	return func(ctx context.Context, request interface{}) (response interface{}, err error) {
+//		req := request.(isOwnerRequest)
+//		isOwner, e := s.IsOwner(ctx, req.UserID, req.ClassID)
+//		return isOwnerResponse{isOwner, e}, nil
+//	}
+//}
+//
+//type isOwnerRequest struct {
+//	UserID  uuid.UUID
+//	ClassID uuid.UUID
+//}
+//
+//type isOwnerResponse struct {
+//	IsOwner bool `json:"role,omitempty"`
+//	Error   error `json:"error,omitempty"`
+//}
+//
+//func (r isOwnerResponse) error() error {
+//	return r.Error
+//}
+
+//func MakeGetMemberEndpoint(s Service) endpoint.Endpoint {
+//	return func(ctx context.Context, request interface{}) (interface{}, error) {
+//		req := request.(getMemberRequest)
+//		member, e := s.GetMember(ctx, req.ClassID, req.UserID)
+//		return getMemberResponse{member, e}, nil
+//	}
+//}
+//
+//type getMemberRequest struct {
+//	ClassID uuid.UUID `json:"class_id"`
+//	UserID  uuid.UUID `json:"user_id"`
+//}
+//
+//type getMemberResponse struct {
+//	Member *models.Member `json:"member,omitempty"`
+//	Error  error `json:"error,omitempty"`
+//}
+//
+//func (r getMemberResponse) error() error {
+//	return r.Error
+//}

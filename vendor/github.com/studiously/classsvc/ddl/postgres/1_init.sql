@@ -10,11 +10,11 @@ CREATE TABLE classes (
 
 
 CREATE TABLE members (
-  id       UUID      NOT NULL PRIMARY KEY,
   user_id  UUID      NOT NULL,
   class_id UUID      NOT NULL,
   role     USER_ROLE NOT NULL  DEFAULT 'student' :: USER_ROLE,
   owner    BOOLEAN   NOT NULL  DEFAULT FALSE,
+  PRIMARY KEY(user_id, class_id),
   FOREIGN KEY ("class_id") REFERENCES classes ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 

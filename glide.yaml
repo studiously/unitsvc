@@ -3,8 +3,7 @@ import:
 - package: github.com/google/uuid
   version: ~0.2.0
 - package: github.com/studiously/classsvc
-  version: ~0.0.1
+  version: ~0.1
   subpackages:
   - classsvc
 - package: github.com/studiously/introspector
-- package: github.com/studiously/svcerror

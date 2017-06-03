@@ -14,7 +14,7 @@ type Class struct {
 	ID          uuid.UUID `json:"id"`           // id
 	Name        string    `json:"name"`         // name
 	CurrentUnit uuid.UUID `json:"current_unit"` // current_unit
-	Active      bool      `json:"active"`       // active
+	Active      bool      `json:"-"`       // active
 
 	// xo fields
 	_exists, _deleted bool

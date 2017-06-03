@@ -7,47 +7,40 @@ import (
 	"github.com/google/uuid"
 	_ "github.com/lib/pq"
 	"github.com/ory/hydra/oauth2"
-	"github.com/studiously/classsvc/codes"
 	"github.com/studiously/classsvc/models"
 	"github.com/studiously/introspector"
-	"github.com/studiously/svcerror"
-)
-
-var (
-	ErrUnauthenticated = svcerror.New(codes.Unauthenticated, "token invalid or not found")
-	ErrNotFound        = svcerror.New(codes.NotFound, "resource not found or user is not allowed to access it")
-	ErrForbidden       = svcerror.New(codes.Forbidden, "user is not allowed to perform action")
-	ErrMustSetOwner    = svcerror.New(codes.MustSetOwner, "cannot demote self from owner unless new owner is set")
-	ErrUserEnrolled    = svcerror.New(codes.UserEnrolled, "user is already enrolled in class")
 )
 
 type postgresService struct {
 	*sql.DB
 }
 
-func (s *postgresService) GetClass(ctx context.Context, classId uuid.UUID) (*models.Class, error) {
-	introspection := ctx.Value(introspector.OAuth2IntrospectionContextKey).(oauth2.Introspection)
-	subj, err := uuid.Parse(introspection.Subject)
-	if err != nil {
-		return nil, ErrUnauthenticated
-	}
-	_, err = models.MemberByUserIDClassID(s, subj, classId)
-	if err != nil {
-		// Return ErrNotFound to protect the secrecy of the class (whether or not it exists)
-		return nil, ErrNotFound
-	}
-	return models.ClassByID(s, classId)
+func New(db *sql.DB) Service {
+	return &postgresService{db}
 }
 
-func (s *postgresService) CreateClass(ctx context.Context, name string) (uuid.UUID, error) {
+func (s *postgresService) GetClass(ctx context.Context, classID uuid.UUID) (*models.Class, error) {
 	introspection := ctx.Value(introspector.OAuth2IntrospectionContextKey).(oauth2.Introspection)
 	subj, err := uuid.Parse(introspection.Subject)
 	if err != nil {
-		return uuid.Nil, ErrUnauthenticated
+		return nil, ErrUnauthorized
+	}
+	_, err = models.MemberByUserIDClassID(s, subj, classID)
+	if err != nil {
+		return nil, ErrNotFound
+	}
+	return models.ClassByID(s, classID)
+}
+
+func (s *postgresService) CreateClass(ctx context.Context, name string) (*uuid.UUID, error) {
+	introspection := ctx.Value(introspector.OAuth2IntrospectionContextKey).(oauth2.Introspection)
+	subj, err := uuid.Parse(introspection.Subject)
+	if err != nil {
+		return nil, ErrUnauthorized
 	}
 	tx, err := s.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelDefault, ReadOnly: false})
 	if err != nil {
-		return uuid.Nil, err
+		return nil, err
 	}
 	class := models.Class{
 		ID:          uuid.New(),
@@ -58,10 +51,9 @@ func (s *postgresService) CreateClass(ctx context.Context, name string) (uuid.UU
 	err = class.Save(tx)
 	if err != nil {
 		tx.Rollback()
-		return uuid.Nil, err
+		return nil, err
 	}
 	member := models.Member{
-		ID:      uuid.New(),
 		UserID:  subj,
 		ClassID: class.ID,
 		Role:    models.UserRoleStudent,
@@ -70,45 +62,49 @@ func (s *postgresService) CreateClass(ctx context.Context, name string) (uuid.UU
 	err = member.Save(tx)
 	if err != nil {
 		tx.Rollback()
-		return uuid.Nil, err
+		return nil, err
 	}
 	err = tx.Commit()
-	return class.ID, err
+	if err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+	return &class.ID, nil
 }
 
-func (s *postgresService) UpdateClass(ctx context.Context, id uuid.UUID, name string, currentUnit uuid.UUID) error {
+func (s *postgresService) UpdateClass(ctx context.Context, classID uuid.UUID, name *string, currentUnit *uuid.UUID) error {
 	introspection := ctx.Value(introspector.OAuth2IntrospectionContextKey).(oauth2.Introspection)
 	subj, err := uuid.Parse(introspection.Subject)
 	if err != nil {
-		return ErrUnauthenticated
+		return ErrUnauthorized
 	}
-	member, err := models.MemberByUserIDClassID(s, subj, id)
+	member, err := models.MemberByUserIDClassID(s, subj, classID)
 	if err != nil {
 		switch err {
 		case sql.ErrNoRows:
 			return ErrNotFound
 		default:
-			return err
+			return ErrInternal
 		}
 	}
 	if !member.Owner {
 		return ErrForbidden
 	}
-	class, err := models.ClassByID(s, id)
+	class, err := models.ClassByID(s, classID)
 	if err != nil {
 		return err
 	}
-	if name != "" {
-		class.Name = name
+	if name != nil {
+		class.Name = *name
 	}
-	if currentUnit != uuid.Nil {
-		class.CurrentUnit = currentUnit // TODO need to validate current unit.
+	if currentUnit != nil {
+		class.CurrentUnit = *currentUnit // TODO validate current unit?
 	}
 	return class.Update(s)
 }
 
-func (s *postgresService) DeleteClass(ctx context.Context, classId uuid.UUID) error {
-	member, err := models.MemberByUserIDClassID(s, subj(ctx), classId)
+func (s *postgresService) DeleteClass(ctx context.Context, classID uuid.UUID) error {
+	member, err := models.MemberByUserIDClassID(s, subj(ctx), classID)
 	if err != nil {
 		switch err {
 		case sql.ErrNoRows:
@@ -121,7 +117,7 @@ func (s *postgresService) DeleteClass(ctx context.Context, classId uuid.UUID) er
 	if !member.Owner {
 		return ErrForbidden
 	}
-	class, err := models.ClassByID(s, classId)
+	class, err := models.ClassByID(s, classID)
 	if err != nil {
 		return err
 	}
@@ -141,8 +137,8 @@ func (s *postgresService) DeleteClass(ctx context.Context, classId uuid.UUID) er
 	return err
 }
 
-func (s *postgresService) ListMembers(ctx context.Context, class uuid.UUID) ([]*models.Member, error) {
-	_, err := models.MemberByUserIDClassID(s, subj(ctx), class)
+func (s *postgresService) ListMembers(ctx context.Context, classID uuid.UUID) ([]*models.Member, error) {
+	_, err := models.MemberByUserIDClassID(s, subj(ctx), classID)
 	if err != nil {
 		switch err {
 		case sql.ErrNoRows:
@@ -152,33 +148,32 @@ func (s *postgresService) ListMembers(ctx context.Context, class uuid.UUID) ([]*
 			return nil, err
 		}
 	}
-	return models.MembersByClassID(s, class)
+	return models.MembersByClassID(s, classID)
 }
 
-func (s *postgresService) JoinClass(ctx context.Context, class uuid.UUID) error {
-	_, err := models.MemberByUserIDClassID(s, subj(ctx), class)
+func (s *postgresService) JoinClass(ctx context.Context, classID uuid.UUID) error {
+	_, err := models.MemberByUserIDClassID(s, subj(ctx), classID)
 	if err == nil {
 		return ErrUserEnrolled
 	}
 	member := models.Member{
-		ID:      uuid.New(),
 		UserID:  subj(ctx),
-		ClassID: class,
+		ClassID: classID,
 		Role:    models.UserRoleStudent,
 	}
 	return member.Save(s)
 }
 
-func (s *postgresService) LeaveClass(ctx context.Context, user uuid.UUID, class uuid.UUID) error {
-	self, err := models.MemberByUserIDClassID(s, subj(ctx), class)
+func (s *postgresService) LeaveClass(ctx context.Context, userID *uuid.UUID, classID uuid.UUID) error {
+	self, err := models.MemberByUserIDClassID(s, subj(ctx), classID)
 	if err != nil {
 		return err
 	}
-	if user != subj(ctx) {
+	if userID != nil && *userID != subj(ctx) {
 		if !self.Owner {
 			return ErrForbidden
 		}
-		target, err := models.MemberByUserIDClassID(s, user, class)
+		target, err := models.MemberByUserIDClassID(s, *userID, classID)
 		if err != nil {
 			switch err {
 			case sql.ErrNoRows:
@@ -196,8 +191,8 @@ func (s *postgresService) LeaveClass(ctx context.Context, user uuid.UUID, class 
 	}
 }
 
-func (s *postgresService) SetRole(ctx context.Context, user uuid.UUID, class uuid.UUID, role models.UserRole) error {
-	self, err := models.MemberByUserIDClassID(s, subj(ctx), class)
+func (s *postgresService) SetRole(ctx context.Context, classID uuid.UUID, userID uuid.UUID, role models.UserRole) error {
+	self, err := models.MemberByUserIDClassID(s, subj(ctx), classID)
 	if err != nil {
 		return err
 	}
@@ -205,7 +200,7 @@ func (s *postgresService) SetRole(ctx context.Context, user uuid.UUID, class uui
 	if !self.Owner {
 		return ErrForbidden
 	}
-	target, err := models.MemberByUserIDClassID(s, user, class)
+	target, err := models.MemberByUserIDClassID(s, userID, classID)
 	if err != nil {
 		return err
 	}
@@ -250,8 +245,27 @@ func (s *postgresService) ListClasses(ctx context.Context) ([]uuid.UUID, error) 
 	return results, nil
 }
 
-func NewPostgres(db *sql.DB) Service {
-	return &postgresService{db}
+func (s *postgresService) GetMember(ctx context.Context, classID, userID uuid.UUID) (*models.Member, error) {
+	// make sure user is in class to begin with
+	_, err := models.MemberByUserIDClassID(s, subj(ctx), classID)
+	if err != nil {
+		switch err {
+		case sql.ErrNoRows:
+			return nil, ErrForbidden
+		default:
+			return nil, err
+		}
+	}
+	member, err := models.MemberByUserIDClassID(s, userID, classID)
+	if err != nil {
+		switch err {
+		case sql.ErrNoRows:
+			return nil, ErrNotFound
+		default:
+			return nil, err
+		}
+	}
+	return member, nil
 }
 
 func subj(ctx context.Context) uuid.UUID {

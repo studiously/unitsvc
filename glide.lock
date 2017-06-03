@@ -1,5 +1,5 @@
-hash: 84128c019659d74b8d3b74c3aeba170a5a7bb8cc3d7ce833c8cd678e57928354
-updated: 2017-06-01T12:49:38.094677257-05:00
+hash: 054624872f78b225eeb2298a5bef8f97456cb9f9d377879a464253e35a0fe319
+updated: 2017-06-03T13:48:14.004718899-05:00
 imports:
 - name: github.com/asaskevich/govalidator
   version: 7b3beb6df3c42abd3509abfc3bcacc0fbfb7c877
@@ -90,6 +90,8 @@ imports:
 - name: github.com/moul/http2curl
   version: 4e24498b31dba4683efb9d35c1c8a91e2eda28c8
 - name: github.com/nats-io/go-nats
+  version: 61923ed1eaf8398000991fbbee2ef11ab5a5be0d
+- name: github.com/nats-io/nats
   version: d4ca4c8b588d5da9c2ac82d6e445ce4feaba18ba
   subpackages:
   - encoders/builtin
@@ -147,7 +149,7 @@ imports:
   subpackages:
   - difflib
 - name: github.com/prometheus/client_golang
-  version: e7e903064f5e9eb5da98208bae10b475d4db0f8c
+  version: c5b7fccd204277076155f10851dad72b76a49317
   subpackages:
   - prometheus
   - prometheus/promhttp
@@ -195,10 +197,9 @@ imports:
   - assert
   - require
 - name: github.com/studiously/classsvc
-  version: 799604216af9fad38b6287e5daeb555eb628074f
+  version: 470d2754e82398db379d7dcf1c32def05f4cb805
   subpackages:
   - classsvc
-  - codes
   - models
 - name: github.com/studiously/introspector
   version: efe68d81eca8ae80111bc1ad04304bfc3dcfa5df

@@ -7,13 +7,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/studiously/classsvc/classsvc"
 	"github.com/studiously/introspector"
-	"github.com/studiously/svcerror"
-	"github.com/studiously/unitsvc/codes"
 	"github.com/studiously/unitsvc/models"
-)
-
-var (
-	ErrNotFound = svcerror.New(codes.NotFound, "the requested resource could not be found, or the user is not allowed to view it")
 )
 
 func New(db *sql.DB, cs classsvc.Service) Service {

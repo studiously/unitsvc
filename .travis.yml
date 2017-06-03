@@ -1,8 +1,9 @@
 language: go
 go:
-  - 1.8
-  - master
-  - tip
+  - "1.8"
+  - "1.8.x"
+  - "master"
+  - "tip"
 services:
   - docker
 
